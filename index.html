@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>正弦波 倍音 合成ビジュアライザー</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col items-center p-4">
+
+  <header class="text-center mb-6 mt-2">
+    <h1 class="text-2xl font-bold text-white">正弦波 倍音 合成ビジュアライザー</h1>
+    <p class="text-gray-400 text-sm mt-1">Sine Wave Harmonics Synthesizer Visualizer</p>
+  </header>
+
+  <div class="w-full max-w-3xl flex flex-col gap-6">
+
+    <!-- Canvas -->
+    <div class="bg-gray-800 rounded-xl p-3 flex justify-center">
+      <canvas id="waveCanvas" width="600" height="300" class="rounded-lg bg-black w-full" style="max-width:600px;height:300px;"></canvas>
+    </div>
+
+    <!-- Base Frequency -->
+    <div class="bg-gray-800 rounded-xl p-4">
+      <div class="flex items-center gap-4">
+        <label for="baseFreq" class="text-gray-300 text-sm font-medium w-44 shrink-0">基本周波数 Base Freq</label>
+        <input id="baseFreq" type="range" min="100" max="1000" value="220" step="1"
+          class="flex-1 accent-indigo-500" aria-label="基本周波数">
+        <span id="baseFreqVal" class="text-indigo-400 font-mono w-20 text-right">220 Hz</span>
+      </div>
+    </div>
+
+    <!-- Harmonics Sliders -->
+    <div class="bg-gray-800 rounded-xl p-4">
+      <h2 class="text-gray-300 text-sm font-semibold mb-3">倍音振幅 Harmonic Amplitudes</h2>
+      <div id="harmonicsContainer" class="flex flex-col gap-2"></div>
+    </div>
+
+    <!-- Presets & Reset -->
+    <div class="bg-gray-800 rounded-xl p-4">
+      <h2 class="text-gray-300 text-sm font-semibold mb-3">プリセット Presets</h2>
+      <div class="flex flex-wrap gap-2">
+        <button onclick="applyPreset('sine')"     class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium transition-colors">正弦波</button>
+        <button onclick="applyPreset('square')"   class="px-4 py-2 bg-violet-600 hover:bg-violet-500 rounded-lg text-sm font-medium transition-colors">矩形波</button>
+        <button onclick="applyPreset('sawtooth')" class="px-4 py-2 bg-pink-600 hover:bg-pink-500 rounded-lg text-sm font-medium transition-colors">鋸波</button>
+        <button onclick="applyPreset('triangle')" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 rounded-lg text-sm font-medium transition-colors">三角波</button>
+        <button onclick="resetAll()"              class="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg text-sm font-medium transition-colors ml-auto">リセット</button>
+      </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="bg-gray-800 rounded-xl p-4">
+      <h2 class="text-gray-300 text-sm font-semibold mb-2">凡例 Legend</h2>
+      <div id="legendContainer" class="flex flex-wrap gap-3"></div>
+    </div>
+
+  </div>
+
+  <script>
+    const NUM_HARMONICS = 8;
+    const HARMONIC_COLORS = [
+      '#f87171','#fb923c','#facc15','#4ade80',
+      '#22d3ee','#818cf8','#e879f9','#f472b6'
+    ];
+
+    // State
+    let amplitudes = Array(NUM_HARMONICS).fill(0);
+    amplitudes[0] = 1.0;
+    let phase = 0; // animation phase offset
+
+    // Build harmonic sliders
+    const container = document.getElementById('harmonicsContainer');
+    const sliders = [];
+    for (let i = 0; i < NUM_HARMONICS; i++) {
+      const row = document.createElement('div');
+      row.className = 'flex items-center gap-3';
+
+      const color = HARMONIC_COLORS[i];
+      const dot = document.createElement('span');
+      dot.style.cssText = `display:inline-block;width:12px;height:12px;border-radius:50%;background:${color};flex-shrink:0;`;
+
+      const label = document.createElement('label');
+      label.setAttribute('for', `harm${i}`);
+      label.className = 'text-gray-400 text-xs w-28 shrink-0';
+      label.textContent = `第${i+1}倍音 H${i+1}`;
+
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.id = `harm${i}`;
+      slider.min = '0';
+      slider.max = '1';
+      slider.step = '0.01';
+      slider.value = amplitudes[i];
+      slider.className = 'flex-1 accent-indigo-400';
+      slider.setAttribute('aria-label', `第${i+1}倍音の振幅`);
+      slider.addEventListener('input', () => {
+        amplitudes[i] = parseFloat(slider.value);
+        valSpan.textContent = parseFloat(slider.value).toFixed(2);
+        saveState();
+      });
+
+      const valSpan = document.createElement('span');
+      valSpan.className = 'text-gray-300 font-mono text-xs w-10 text-right';
+      valSpan.textContent = amplitudes[i].toFixed(2);
+
+      row.appendChild(dot);
+      row.appendChild(label);
+      row.appendChild(slider);
+      row.appendChild(valSpan);
+      container.appendChild(row);
+      sliders.push(slider);
+    }
+
+    // Build legend
+    const legendContainer = document.getElementById('legendContainer');
+    for (let i = 0; i < NUM_HARMONICS; i++) {
+      const item = document.createElement('div');
+      item.className = 'flex items-center gap-1 text-xs text-gray-400';
+      const swatch = document.createElement('span');
+      swatch.style.cssText = `display:inline-block;width:24px;height:3px;background:${HARMONIC_COLORS[i]};border-radius:2px;`;
+      item.appendChild(swatch);
+      item.appendChild(document.createTextNode(`H${i+1}`));
+      legendContainer.appendChild(item);
+    }
+    const compItem = document.createElement('div');
+    compItem.className = 'flex items-center gap-1 text-xs text-gray-100';
+    const compSwatch = document.createElement('span');
+    compSwatch.style.cssText = 'display:inline-block;width:24px;height:3px;background:#ffffff;border-radius:2px;';
+    compItem.appendChild(compSwatch);
+    compItem.appendChild(document.createTextNode('合成波'));
+    legendContainer.appendChild(compItem);
+
+    // Base freq
+    const baseFreqSlider = document.getElementById('baseFreq');
+    const baseFreqVal = document.getElementById('baseFreqVal');
+    baseFreqSlider.addEventListener('input', () => {
+      baseFreqVal.textContent = baseFreqSlider.value + ' Hz';
+      saveState();
+    });
+
+    // Canvas drawing
+    const canvas = document.getElementById('waveCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function drawWave(timestamp) {
+      const W = canvas.width;
+      const H = canvas.height;
+      const midY = H / 2;
+      const period = W;
+      const phaseOff = (timestamp / 1000) * 60; // slow scroll
+
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, W, H);
+
+      // Draw center line
+      ctx.strokeStyle = '#1f2937';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, midY);
+      ctx.lineTo(W, midY);
+      ctx.stroke();
+
+      // Faint horizontal grid lines
+      for (let g = 1; g < 4; g++) {
+        const y = midY - (midY * g / 4);
+        ctx.strokeStyle = '#111827';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(0, y); ctx.lineTo(W, y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, midY + (midY * g / 4)); ctx.lineTo(W, midY + (midY * g / 4));
+        ctx.stroke();
+      }
+
+      const maxAmp = midY * 0.85;
+
+      // Draw individual harmonics (faint)
+      for (let n = 0; n < NUM_HARMONICS; n++) {
+        if (amplitudes[n] < 0.001) continue;
+        ctx.strokeStyle = HARMONIC_COLORS[n] + '66'; // ~40% opacity
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let x = 0; x < W; x++) {
+          const t = (x + phaseOff) / period;
+          const y = midY - amplitudes[n] * maxAmp * Math.sin((n + 1) * 2 * Math.PI * t);
+          if (x === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+
+      // Draw composite (bright white)
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = '#a5b4fc';
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      for (let x = 0; x < W; x++) {
+        const t = (x + phaseOff) / period;
+        let sum = 0;
+        for (let n = 0; n < NUM_HARMONICS; n++) {
+          sum += amplitudes[n] * Math.sin((n + 1) * 2 * Math.PI * t);
+        }
+        // Normalize
+        const totalMax = amplitudes.reduce((a, b) => a + b, 0) || 1;
+        const y = midY - (sum / totalMax) * maxAmp;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      requestAnimationFrame(drawWave);
+    }
+
+    requestAnimationFrame(drawWave);
+
+    // Presets
+    function applyPreset(type) {
+      const a = Array(NUM_HARMONICS).fill(0);
+      if (type === 'sine') {
+        a[0] = 1.0;
+      } else if (type === 'square') {
+        // odd harmonics: 1/n
+        for (let n = 0; n < NUM_HARMONICS; n++) {
+          if ((n + 1) % 2 === 1) a[n] = 1 / (n + 1);
+        }
+      } else if (type === 'sawtooth') {
+        // all harmonics: 1/n
+        for (let n = 0; n < NUM_HARMONICS; n++) {
+          a[n] = 1 / (n + 1);
+        }
+      } else if (type === 'triangle') {
+        // odd harmonics: 1/n²
+        for (let n = 0; n < NUM_HARMONICS; n++) {
+          if ((n + 1) % 2 === 1) a[n] = 1 / ((n + 1) * (n + 1));
+        }
+      }
+      amplitudes = a;
+      updateSlidersFromAmplitudes();
+      saveState();
+    }
+
+    function resetAll() {
+      amplitudes = Array(NUM_HARMONICS).fill(0);
+      amplitudes[0] = 1.0;
+      baseFreqSlider.value = 220;
+      baseFreqVal.textContent = '220 Hz';
+      updateSlidersFromAmplitudes();
+      saveState();
+    }
+
+    function updateSlidersFromAmplitudes() {
+      sliders.forEach((slider, i) => {
+        slider.value = amplitudes[i];
+        const valSpan = slider.nextElementSibling;
+        valSpan.textContent = amplitudes[i].toFixed(2);
+      });
+    }
+
+    // Persistence
+    function saveState() {
+      localStorage.setItem('sineHarmonics', JSON.stringify({
+        amplitudes,
+        baseFreq: parseInt(baseFreqSlider.value)
+      }));
+    }
+
+    function loadState() {
+      try {
+        const saved = JSON.parse(localStorage.getItem('sineHarmonics'));
+        if (saved) {
+          if (saved.amplitudes && saved.amplitudes.length === NUM_HARMONICS) {
+            amplitudes = saved.amplitudes;
+          }
+          if (saved.baseFreq) {
+            baseFreqSlider.value = saved.baseFreq;
+            baseFreqVal.textContent = saved.baseFreq + ' Hz';
+          }
+          updateSlidersFromAmplitudes();
+        }
+      } catch(e) {}
+    }
+
+    loadState();
+  </script>
+</body>
+</html>
